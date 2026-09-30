@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>S3 Static Website</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand">☁️ CloudFormation Course</span>
+    <button id="theme-toggle" class="ghost-btn" type="button" aria-label="Toggle dark mode">🌙</button>
+  </header>
+
+  <main class="container">
+    <section class="hero">
+      <p class="eyebrow">Task 1 · Static website hosting</p>
+      <h1>Hello from <span class="accent">Amazon S3</span></h1>
+      <p class="lead">
+        This page is served straight from an S3 bucket. The bucket, its website
+        configuration and its public-read policy were all created by an
+        AWS CloudFormation template.
+      </p>
+      <div class="actions">
+        <a class="btn" href="/this-page-does-not-exist">Test the error page</a>
+      </div>
+    </section>
+
+    <section class="card status" aria-live="polite">
+      <h2>Live request info</h2>
+      <dl>
+        <div><dt>Served from</dt><dd id="host">—</dd></div>
+        <div><dt>Protocol</dt><dd id="protocol">—</dd></div>
+        <div><dt>Local time</dt><dd id="clock">—</dd></div>
+      </dl>
+    </section>
+
+    <section>
+      <h2 class="section-title">How it works</h2>
+      <div class="steps">
+        <article class="card step">
+          <span class="step-num">1</span>
+          <h3>Bucket</h3>
+          <p>CloudFormation creates an <code>AWS::S3::Bucket</code> with a
+            <code>WebsiteConfiguration</code> pointing to <code>index.html</code>
+            and <code>error.html</code>.</p>
+        </article>
+        <article class="card step">
+          <span class="step-num">2</span>
+          <h3>Policy</h3>
+          <p>An <code>AWS::S3::BucketPolicy</code> allows anyone to
+            <code>s3:GetObject</code>, so visitors can read the site files.</p>
+        </article>
+        <article class="card step">
+          <span class="step-num">3</span>
+          <h3>Upload</h3>
+          <p>The HTML, CSS and JavaScript files are uploaded to the bucket and
+            served from the static website endpoint.</p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">AWS CloudFormation Course · S3 Static Website</footer>
+
+  <script src="/js/script.js"></script>
+</body>
+</html>

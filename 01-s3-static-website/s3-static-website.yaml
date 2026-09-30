@@ -1,0 +1,63 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  S3 bucket configured for static website hosting, with a bucket policy
+  that grants public read access to the website files.
+
+Parameters:
+  BucketName:
+    Type: String
+    Description: Globally unique bucket name (3-63 characters, lowercase letters, numbers and hyphens).
+    AllowedPattern: "^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$"
+    ConstraintDescription: Must be 3-63 lowercase letters, numbers or hyphens, starting and ending with a letter or number.
+  IndexDocument:
+    Type: String
+    Default: index.html
+    Description: Page returned for requests to the site root.
+  ErrorDocument:
+    Type: String
+    Default: error.html
+    Description: Page returned when the requested file does not exist.
+
+Resources:
+  WebsiteBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BucketName
+      WebsiteConfiguration:
+        IndexDocument: !Ref IndexDocument
+        ErrorDocument: !Ref ErrorDocument
+      # New buckets block all public access by default. Public access is granted
+      # through the bucket policy below, so only policy-based blocking is turned
+      # off; public access through ACLs stays blocked.
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: false
+        RestrictPublicBuckets: false
+
+  WebsiteBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref WebsiteBucket
+      # Same policy as bucket-policy.json, written in JSON syntax (JSON is valid YAML).
+      PolicyDocument:
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "PublicReadGetObject",
+              "Effect": "Allow",
+              "Principal": "*",
+              "Action": "s3:GetObject",
+              "Resource": { "Fn::Sub": "${WebsiteBucket.Arn}/*" }
+            }
+          ]
+        }
+
+Outputs:
+  BucketName:
+    Description: Bucket to upload the website files to.
+    Value: !Ref WebsiteBucket
+  WebsiteURL:
+    Description: S3 static website hosting endpoint.
+    Value: !GetAtt WebsiteBucket.WebsiteURL

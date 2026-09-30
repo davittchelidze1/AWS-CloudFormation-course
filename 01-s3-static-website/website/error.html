@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>404 · Page not found</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand">☁️ CloudFormation Course</span>
+    <button id="theme-toggle" class="ghost-btn" type="button" aria-label="Toggle dark mode">🌙</button>
+  </header>
+
+  <main class="container error-page">
+    <p class="error-code">404</p>
+    <h1>Page not found</h1>
+    <p class="lead">
+      The file you asked for is not in the bucket. S3 returned this page because
+      it is set as the <code>ErrorDocument</code> in the bucket's website configuration.
+    </p>
+    <p class="muted">Requested path: <code id="requested-path"></code></p>
+    <div class="actions">
+      <a class="btn" href="/">Back to home</a>
+    </div>
+  </main>
+
+  <footer class="footer">AWS CloudFormation Course · S3 Static Website</footer>
+
+  <script src="/js/script.js"></script>
+</body>
+</html>
