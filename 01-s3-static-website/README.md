@@ -75,4 +75,7 @@ aws cloudformation delete-stack --stack-name s3-static-website
 
 ## Screenshot
 
-_Screenshot of the hosted website goes here (`screenshot.png`)._
+Hosted at the S3 static website endpoint
+`http://davit-cfn-website-2026.s3-website-us-east-1.amazonaws.com`:
+
+![Website served from the S3 static website endpoint](screenshot.png)
