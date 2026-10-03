@@ -1,0 +1,229 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+# Lets DeletionPolicy / UpdateReplacePolicy use intrinsic functions (Fn::If below).
+# Deploying a template with a transform needs the CAPABILITY_AUTO_EXPAND capability.
+Transform: AWS::LanguageExtensions
+
+Description: >
+  EC2 web server plus an S3 bucket for its logs. The instance's user data
+  exports the bucket name as the LOG_BUCKET system environment variable and
+  the environment name as APP_ENV.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Environment
+        Parameters:
+          - AppEnv
+      - Label:
+          default: EC2 instance
+        Parameters:
+          - AmiID
+          - InstanceType
+          - KeyName
+          - InstanceProfileName
+          - SSHLocation
+      - Label:
+          default: S3 log bucket
+        Parameters:
+          - LogBucketNamePrefix
+          - UniqueSuffix
+    ParameterLabels:
+      AppEnv:
+        default: Application environment
+      AmiID:
+        default: AMI ID (SSM parameter path)
+      InstanceType:
+        default: Instance type
+      KeyName:
+        default: SSH key pair
+      InstanceProfileName:
+        default: IAM instance profile
+      SSHLocation:
+        default: Allowed SSH source (CIDR)
+      LogBucketNamePrefix:
+        default: Log bucket name prefix
+      UniqueSuffix:
+        default: Unique suffix (e.g. your initials)
+
+Parameters:
+  AppEnv:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - production
+    Description: Environment the stack is deployed for. Exported on the instance as APP_ENV.
+  AmiID:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+    Description: SSM public parameter that resolves to the latest Amazon Linux 2023 AMI in the current region.
+  InstanceType:
+    Type: String
+    Default: t3.micro
+    AllowedValues:
+      - t2.micro
+      - t3.micro
+      - t3.small
+      - t3.medium
+    Description: EC2 instance type.
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Default: vockey
+    Description: Existing EC2 key pair for SSH (vockey in AWS Academy Learner Lab).
+  InstanceProfileName:
+    Type: String
+    Default: LabInstanceProfile
+    Description: Existing IAM instance profile that lets the instance use the bucket (LabInstanceProfile in AWS Academy Learner Lab). Leave empty for none.
+  SSHLocation:
+    Type: String
+    Default: 0.0.0.0/0
+    AllowedPattern: ^(\d{1,3}\.){3}\d{1,3}/\d{1,2}$
+    ConstraintDescription: Must be a CIDR block such as 203.0.113.10/32.
+    Description: CIDR allowed to reach port 22. Use <your-ip>/32 to allow only your machine.
+  LogBucketNamePrefix:
+    Type: String
+    Default: webserver
+    MinLength: 3
+    MaxLength: 20
+    AllowedPattern: ^[a-z0-9][a-z0-9-]*[a-z0-9]$
+    ConstraintDescription: 3-20 lowercase letters, numbers or hyphens, starting and ending with a letter or number.
+    Description: First part of the log bucket name.
+  UniqueSuffix:
+    Type: String
+    Default: dt
+    MinLength: 1
+    MaxLength: 10
+    AllowedPattern: ^[a-z0-9]+$
+    ConstraintDescription: 1-10 lowercase letters or numbers.
+    Description: Identifier appended to the log bucket name, such as your initials.
+
+Rules:
+  ProductionInstanceType:
+    RuleCondition: !Equals [!Ref AppEnv, production]
+    Assertions:
+      - Assert:
+          Fn::Contains:
+            - - t3.small
+              - t3.medium
+            - !Ref InstanceType
+        AssertDescription: The production environment must run on t3.small or t3.medium.
+  ProductionSSHLocation:
+    RuleCondition: !Equals [!Ref AppEnv, production]
+    Assertions:
+      - Assert: !Not [!Equals [!Ref SSHLocation, 0.0.0.0/0]]
+        AssertDescription: The production environment must not allow SSH from 0.0.0.0/0.
+
+Mappings:
+  EnvironmentConfig:
+    dev:
+      LogRetentionDays: 7
+    staging:
+      LogRetentionDays: 30
+    production:
+      LogRetentionDays: 365
+
+Conditions:
+  IsProduction: !Equals [!Ref AppEnv, production]
+  HasInstanceProfile: !Not [!Equals [!Ref InstanceProfileName, ""]]
+
+Resources:
+  WebServerLogBucket:
+    Type: AWS::S3::Bucket
+    # Production logs survive stack deletion; dev and staging buckets are removed
+    # with the stack (the bucket must be empty for that to succeed).
+    DeletionPolicy: !If [IsProduction, Retain, Delete]
+    UpdateReplacePolicy: !If [IsProduction, Retain, Delete]
+    Properties:
+      # e.g. webserver-dev-logs-dt-123456789012
+      BucketName: !Sub ${LogBucketNamePrefix}-${AppEnv}-logs-${UniqueSuffix}-${AWS::AccountId}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireOldLogs
+            Status: Enabled
+            ExpirationInDays: !FindInMap [EnvironmentConfig, !Ref AppEnv, LogRetentionDays]
+      Tags:
+        - Key: Environment
+          Value: !Ref AppEnv
+
+  WebServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub SSH access to the ${AppEnv} web server of stack ${AWS::StackName}
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref SSHLocation
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-${AppEnv}-ssh
+        - Key: Environment
+          Value: !Ref AppEnv
+
+  WebServerInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref AmiID
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      IamInstanceProfile: !If [HasInstanceProfile, !Ref InstanceProfileName, !Ref AWS::NoValue]
+      SecurityGroupIds:
+        - !GetAtt WebServerSecurityGroup.GroupId
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -euxo pipefail
+
+          yum update -y
+
+          # System-wide environment, read by PAM for every login session.
+          cat >> /etc/environment <<EOF
+          LOG_BUCKET=${WebServerLogBucket}
+          APP_ENV=${AppEnv}
+          EOF
+
+          # Same variables exported by every login shell (ssh, EC2 Instance Connect).
+          cat > /etc/profile.d/app-env.sh <<EOF
+          export LOG_BUCKET=${WebServerLogBucket}
+          export APP_ENV=${AppEnv}
+          EOF
+          chmod 644 /etc/profile.d/app-env.sh
+      Tags:
+        - Key: Name
+          Value: !Sub ${AWS::StackName}-${AppEnv}-web-server
+        - Key: Environment
+          Value: !Ref AppEnv
+
+Outputs:
+  AppEnv:
+    Description: Environment the stack was deployed for (APP_ENV on the instance).
+    Value: !Ref AppEnv
+  LogBucketName:
+    Description: Log bucket name (LOG_BUCKET on the instance).
+    Value: !Ref WebServerLogBucket
+    Export:
+      Name: !Sub ${AWS::StackName}-LogBucketName
+  LogBucketArn:
+    Description: Log bucket ARN.
+    Value: !GetAtt WebServerLogBucket.Arn
+  InstanceId:
+    Description: EC2 instance ID.
+    Value: !Ref WebServerInstance
+  PublicDnsName:
+    Description: Public DNS name of the instance.
+    Value: !GetAtt WebServerInstance.PublicDnsName
+  SSHCommand:
+    Description: SSH command. In AWS Academy Learner Lab the private key of vockey is labsuser.pem (AWS Details -> Download PEM).
+    Value: !Sub ssh -i labsuser.pem ec2-user@${WebServerInstance.PublicDnsName}
